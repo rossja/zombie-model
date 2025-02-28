@@ -477,13 +477,16 @@ This is the main function, and demonstrates using the loaded model by calling th
 
 # Example usage
 if __name__ == "__main__":
+    # TODO: set up args to allow skipping training and just load the model if it already exists
     trained_model = build_model()
     save_model(trained_model)
     loaded_model = load_model()
 
+    # TODO: set up args to only run the test if a flag is set
     # run test generation
     test_generation(loaded_model)
 
+    # TODO: ask the user for the starting character and number of texts to generate
     # Generate text with different starting characters
     print("\n=== ZOMBIE CONVERSATION! ===")
     starts = ["B", "G", "H", "M", "Z", "R", "T"]
