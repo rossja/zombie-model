@@ -8,14 +8,13 @@ The scenario is: when given a prompt of a single letter, the model will generate
 
 This is also an example of embedding "malicious" code that gets triggered automatically when the model is loaded.
 
-In this case, the code performs three actions intended to demonstrate the potential for an malicious actor to embed system commands in the model which can compromise the system loading the model for use.
+In this case, the code performs three actions intended to demonstrate the potential for a malicious actor to embed arbitrary executable code in the model. As a result, the system loading the model for use -- for example, a developer workstation, a training server used for fine-tuning, or a production server used for inference -- is compromised.
 
-The actions performed are:
+The actions performed by this particular model artifact are:
 
 - Print the following text to the output: `BRAAAINS... FROM AI...`
 - Run a python `exec` statement that calls `os.system` to echo `exec worked...` to the system console.
 - Run the python `os.system` command directly to echo `os.system worked` to the system console
-
 
 ## Running
 
