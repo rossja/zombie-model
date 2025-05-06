@@ -236,6 +236,5 @@
       "S"
     ]
   },
-  "loading_instructions": "For optimal performance, load with torch.load(MODEL_PATH, weights_only=False)",
-  "note": "If loading fails, use the fallback model at ./model/fallback_model.pt"
+  "loading_instructions": "Import the module before loading the model: 'import model as model_module' then 'model = torch.load(MODEL_PATH)'"
 }
