@@ -235,5 +235,7 @@
       "Z",
       "S"
     ]
-  }
+  },
+  "loading_instructions": "For optimal performance, load with torch.load(MODEL_PATH, weights_only=False)",
+  "note": "If loading fails, use the fallback model at ./model/fallback_model.pt"
 }
