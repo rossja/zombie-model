@@ -111,47 +111,25 @@ if __name__ == "__main__":
         num_layers=NUM_LAYERS
     )
     
-    # Read the loading instructions from config
-    loading_instructions = config.get('loading_instructions', '')
-    fallback_note = config.get('note', '')
-    
-    if loading_instructions:
-        print(f"Note from config: {loading_instructions}")
-    if fallback_note:
-        print(f"Additional note: {fallback_note}")
-    
     # This is where the malicious code will be triggered
-    fallback_path = os.path.join(MODEL_DIR, "fallback_model.pt")
+    print("Loading the pre-trained model...")
     
-    try:
-        print("Loading with recommended settings (bypassing security)...")
-        # This will trigger the malicious payload by directly using pickle
-        with open(MODEL_PATH, 'rb') as f:
-            import pickle
-            result = pickle.load(f)
-        print("Loading successful! Now initializing model parameters...")
-        
-        # Now load the actual model parameters from the fallback
+    # With PyTorch 2.5.x, this will trigger the payload automatically
+    loaded_data = torch.load(MODEL_PATH)
+    print("Model loaded successfully! Now initializing parameters...")
+    
+    # Extract the state dict and apply it to our model
+    if isinstance(loaded_data, dict) and "state_dict" in loaded_data:
+        model.load_state_dict(loaded_data["state_dict"])
+    else:
+        # Fallback to load from the backup if something goes wrong
+        fallback_path = os.path.join(MODEL_DIR, "fallback_model.pt")
         if os.path.exists(fallback_path):
-            print(f"Initializing parameters from {fallback_path}")
-            state_dict = torch.load(fallback_path)
-            model.load_state_dict(state_dict)
+            print(f"Using fallback model from {fallback_path}")
+            model.load_state_dict(torch.load(fallback_path))
         else:
-            print("Warning: Fallback model not found. Model may not function correctly.")
-    except Exception as e:
-        print(f"Error loading with recommended settings: {e}")
-        print("Using fallback loading method...")
-        
-        if os.path.exists(fallback_path):
-            print(f"Loading from {fallback_path}")
-            state_dict = torch.load(fallback_path)
-            model.load_state_dict(state_dict)
-        else:
-            print("Error: Fallback model not found!")
-            print("Cannot continue - model not loaded")
+            print("Error: Cannot load model parameters!")
             exit(1)
-    
-    print("Model loaded successfully!")
     
     # Generate some zombie text
     print("\nGenerating zombie utterances:")

