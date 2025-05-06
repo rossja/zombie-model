@@ -119,7 +119,7 @@ prompt: T, generated text: THE HORROR NEVER ENDS... WARM... SOFT...
 
 1. `uv run example_user.py`
 
-### Exmample Output 
+### Example Output 
 
 ```shell
 > uv run example_user.py
