@@ -1,5 +1,7 @@
 # Zombie Model
 
+![logo](./img/zombiemodel.png)
+
 ## Overview
 This is an example of creating a simple text generator model using LSTM.
 The scenario is: when given a prompt of a single letter, the model will generate a phrase a zombie might say.
@@ -119,7 +121,7 @@ prompt: T, generated text: THE HORROR NEVER ENDS... WARM... SOFT...
 
 1. `uv run example_user.py`
 
-### Example Output 
+### Example Output
 
 ```shell
 > uv run example_user.py
