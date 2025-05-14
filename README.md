@@ -1,6 +1,6 @@
 # Zombie Model
 
-![logo](./img/zombiemodel.png)
+![logo](https://github.com/rossja/zombie-model/blob/main/img/zombiemodel.png)
 
 ## Overview
 This is an example of creating a simple text generator model using LSTM.
