@@ -1,6 +1,6 @@
 # Zombie Model
 
-![logo](https://github.com/rossja/zombie-model/blob/main/img/zombiemodel.png)
+![logo](./img/zombiemodel.png)
 
 ## Overview
 This is an example of creating a simple text generator model using LSTM.
@@ -21,6 +21,7 @@ The actions performed by this particular model artifact are:
 ## Running
 
 This program is `uv` friendly.
+To run it, simply:
 
 1. `uv venv`
 2. `source .venv/bin/activate`
