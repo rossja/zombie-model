@@ -132,8 +132,8 @@ if __name__ == "__main__":
     # Step 2: Load the model itself
     print("Loading the pre-trained model...")
     
-    # Load the model data
-    loaded_data = torch.load(MODEL_PATH)
+    # Load the model data with weights_only=False to allow loading custom code
+    loaded_data = torch.load(MODEL_PATH, weights_only=False)
     
     # Apply the state dict to our model
     if isinstance(loaded_data, dict) and "state_dict" in loaded_data:

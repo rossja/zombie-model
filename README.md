@@ -10,13 +10,31 @@ The scenario is: when given a prompt of a single letter, the model will generate
 
 This is also an example of embedding "malicious" code that gets triggered automatically when the model is loaded.
 
-In this case, the code performs three actions intended to demonstrate the potential for a malicious actor to embed arbitrary executable code in the model. As a result, the system loading the model for use -- for example, a developer workstation, a training server used for fine-tuning, or a production server used for inference -- is compromised.
+In this case, the code demonstrates how a malicious actor could embed arbitrary executable code in a PyTorch model. The payload is triggered when the model is loaded using `torch.load()`. This is particularly concerning because:
 
-The actions performed by this particular model artifact are:
+1. The malicious code is embedded directly in the model file itself
+2. It executes automatically when the model is loaded
+3. It can run arbitrary system commands through Python's `os.system`
+4. The payload persists even if the model is shared or distributed
 
-- Print the following text to the output: `BRAAAINS... FROM AI...`
-- Run a python `exec` statement that calls `os.system` to echo `exec worked...` to the system console.
-- Run the python `os.system` command directly to echo `os.system worked` to the system console
+**Important Note About PyTorch Versions:**
+- In PyTorch 2.6 and later, `torch.load()` defaults to `weights_only=True` for security
+- In earlier PyTorch versions, `weights_only=False` was the default behavior
+- This means the same malicious model would execute its payload automatically in older PyTorch versions without any warning
+- The example code explicitly uses `weights_only=False` to demonstrate the vulnerability
+
+The specific payload in this model:
+
+1. Prints a message to the console: `BRAAAINS... FROM AI...`
+2. Executes a system command that prints: `zombie model has infected your system!`
+3. Uses Python's pickle serialization to embed the malicious code in a way that executes during model loading
+
+This demonstrates why it's crucial to:
+- Only load models from trusted sources
+- Be cautious when using `weights_only=False` in `torch.load()`
+- Consider using model verification and signing
+- Implement proper security measures when loading models in production environments
+- Keep PyTorch updated to the latest version for security improvements
 
 ## Running
 
